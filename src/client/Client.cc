@@ -1296,7 +1296,7 @@ Dentry *Client::insert_dentry_inode(Dir *dir, const string& dname, LeaseStat *dl
 
 bool Client::_wrap_name(Inode& diri, std::string& dname, std::string& alternate_name)
 {
-  ldout(cct, 20) << __func__ << ": (" << dname << " len=" << dname.size() << ", " << alternate_name << ") on " << diri << dendl;
+  ldout(cct, 20) << __func__ << ": (" << binstrprint(dname) << " len=" << dname.size() << ", " << binstrprint(alternate_name) << ") on " << diri << dendl;
   ceph_assert(dname.size() > 0);
   alternate_name = "";
 
@@ -1318,7 +1318,7 @@ bool Client::_wrap_name(Inode& diri, std::string& dname, std::string& alternate_
         /* confirm valid utf-8 name */
         encoded = boost::locale::conv::to_utf<char>(dname, "UTF-8", boost::locale::conv::stop);
       } catch (const boost::locale::conv::conversion_error& e) {
-        ldout(cct, 2) << "`" << dname << "' is not valid utf-8: " << e.what() << dendl;
+        ldout(cct, 2) << "`" << binstrprint(dname) << "' is not valid utf-8: " << e.what() << dendl;
         return false;
       }
     } else if (!encoding.empty()) {
@@ -1357,7 +1357,7 @@ bool Client::_wrap_name(Inode& diri, std::string& dname, std::string& alternate_
     std::string folded;
     if (is_insensitive) {
       if (normalized.empty()) {
-        ldout(cct, 2) << __func__ << " normalization is required before case folding: " << dname << dendl;
+        ldout(cct, 2) << __func__ << " normalization is required before case folding: " << binstrprint(dname) << dendl;
         return false;
       }
       try {
@@ -1407,7 +1407,7 @@ bool Client::_wrap_name(Inode& diri, std::string& dname, std::string& alternate_
 
 std::string Client::_unwrap_name(Inode& diri, const std::string& dname, const std::string& alternate_name)
 {
-  ldout(cct, 20) << __func__ << ": (" << dname << ", " << alternate_name << ") on " << diri << dendl;
+  ldout(cct, 20) << __func__ << ": (" << binstrprint(dname) << ", " << binstrprint(alternate_name) << ") on " << diri << dendl;
   std::string newdname = dname;
   std::string newaltn = alternate_name;
 
@@ -1442,7 +1442,7 @@ std::string Client::_unwrap_name(Inode& diri, const std::string& dname, const st
     /* no reverse of normalization / encoding */
 
     if (is_insensitive) {
-      ldout(cct, 25) << __func__ << ":  = " << alternate_name << dendl;
+      ldout(cct, 25) << __func__ << ":  = " << binstrprint(alternate_name) << dendl;
       newdname = newaltn;
     }
   }
@@ -7795,7 +7795,7 @@ int Client::path_walk(InodeRef dirinode, const filepath& origpath, walk_dentry_r
   int symlinks = 0;
   unsigned i = 0;
 
-  ldout(cct, 10) << __func__ << ": cur=" << *diri << " path=" << path << dendl;
+  ldout(cct, 10) << __func__ << ": cur=" << *diri << " path=" << binstrprint(path.get_path()) << dendl;
 
   if (path.depth() == 0) {
     /* diri/dname can also be used as a filepath; or target */
@@ -7808,8 +7808,8 @@ int Client::path_walk(InodeRef dirinode, const filepath& origpath, walk_dentry_r
   while (i < path.depth() && diri) {
     int caps = 0;
     dname = path[i];
-    ldout(cct, 10) << " " << i << " " << *diri << " " << dname << dendl;
-    ldout(cct, 20) << "  (path is " << path << ")" << dendl;
+    ldout(cct, 10) << " " << binstrprint(dname) << " in " << *diri << dendl;
+    ldout(cct, 20) << "  (i is " << i << " path is " << binstrprint(path.get_path()) << ")" << dendl;
     InodeRef next;
     if (!diri.get()->is_dir()) {
       ldout(cct, 20) << diri.get() << " is not a dir inode, name " << dname.c_str() << dendl;
@@ -7878,6 +7878,7 @@ int Client::path_walk(InodeRef dirinode, const filepath& origpath, walk_dentry_r
           ret = -EPERM;
           goto out;
         }
+        ldout(cct, 25) << "decrypted symlink is: " << binstrprint(symlink) << dendl;
       } else {
         symlink = next->symlink;
       }
@@ -15910,6 +15911,7 @@ int Client::_symlink(Inode *dir, const char *name, const char *target,
       delete req;
       return r;
     }
+    ldout(cct, 25) << "encrypted symlink is: " << binstrprint(enc_target) << dendl;
     req->set_string2(enc_target.c_str());
   } else {
     req->set_string2(target);
