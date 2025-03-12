@@ -589,3 +589,13 @@ options:
   - mds_client
   flags:
   - runtime
+- name: client_fscrypt_as
+  type: bool
+  level: advanced
+  desc: Enable fscrypt access semantics
+  long_desc: Enable fscrypt access semantics for locked/unlocked states.
+  default: true
+  services:
+  - mds_client
+  flags:
+  - runtime
