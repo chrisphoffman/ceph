@@ -1893,8 +1893,11 @@ void CInode::encode_lock_ifile(bufferlist& bl)
   }
   encode(n, bl);
   bl.claim_append(tmp);
-  if (is_auth())
+  if (is_auth()) {
     encode(get_inode()->fscrypt_file, bl);
+    if (get_inode()->fscrypt_file.size() > 0)
+       dout(10) << "6setting fscrypt_file size=" << *(ceph_le64 *)get_inode()->fscrypt_file.data() << dendl;
+  }
   ENCODE_FINISH(bl);
 }
 
@@ -1977,8 +1980,13 @@ void CInode::decode_lock_ifile(bufferlist::const_iterator& p)
       }
     }
   }
-  if (!is_auth() && struct_v >= 2)
+  if (!is_auth() && struct_v >= 2) {
+    if(_inode->fscrypt_file.size() > 0)
+    dout(10) << "7asetting fscrypt_file size=" << *(ceph_le64 *)_inode->fscrypt_file.data() << dendl;
     decode(_inode->fscrypt_file, p);
+    if(_inode->fscrypt_file.size() > 0)
+    dout(10) << "7setting fscrypt_file size=" << *(ceph_le64 *)_inode->fscrypt_file.data() << dendl;
+  }
   DECODE_FINISH(p);
 
   if (_inode)
@@ -3990,6 +3998,8 @@ int CInode::encode_inodestat(bufferlist& bl, Session *session,
       + optmdbl.length()
       ;
 
+    if(file_i->fscrypt_file.size() > 0)
+    dout(10) << "4setting fscrypt_file size=" << *(ceph_le64 *)file_i->fscrypt_file.data() << dendl;
     if (xattr_version) {
       bytes += sizeof(__u32) + sizeof(__u32); // xattr buffer len + number entries
       if (pxattrs) {
@@ -4193,7 +4203,11 @@ int CInode::encode_inodestat(bufferlist& bl, Session *session,
     encode(snap_metadata, bl);
     encode(!file_i->fscrypt_auth.empty(), bl);
     encode(file_i->fscrypt_auth, bl);
+    if(file_i->fscrypt_file.size() > 0)
+    dout(10) << "8asetting fscrypt_file size=" << *(ceph_le64 *)file_i->fscrypt_file.data() << dendl;
     encode(file_i->fscrypt_file, bl);
+    if(file_i->fscrypt_file.size() > 0)
+    dout(10) << "8setting fscrypt_file size=" << *(ceph_le64 *)file_i->fscrypt_file.data() << dendl;
     encode_nohead(optmdbl, bl);
     // encode inodestat
     ENCODE_FINISH(bl);
@@ -4282,6 +4296,8 @@ void CInode::encode_cap_message(const ref_t<MClientCaps> &m, Capability *cap)
   m->truncate_seq = i->truncate_seq;
   m->truncate_size = i->truncate_size;
   m->fscrypt_file.assign(i->fscrypt_file.begin(), i->fscrypt_file.end());
+  if (m->fscrypt_file.size() > 0)
+  dout(10) << "5setting fscrypt_file size=" << *(ceph_le64 *)m->fscrypt_file.data() << dendl;
   m->fscrypt_auth.assign(i->fscrypt_auth.begin(), i->fscrypt_auth.end());
   m->mtime = i->mtime;
   m->atime = i->atime;

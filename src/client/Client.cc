@@ -942,6 +942,7 @@ void Client::update_inode_file_size(Inode *in, int issued, uint64_t size,
       (truncate_seq == in->truncate_seq && size > in->effective_size())) {
     ldout(cct, 10) << "size " << in->effective_size() << " -> " << size << dendl;
     if (in->is_fscrypt_enabled()) {
+      ldout(cct, 10) << "aah3r3" << dendl;
       in->set_effective_size(size);
       in->size = in->reported_size = fscrypt_next_block_start(size);
     } else {
@@ -8504,6 +8505,7 @@ int Client::_do_setattr(Inode *in, struct ceph_statx *stx, int mask,
 	header.data_len = (8 + 8 + 4);
 	header.file_offset = 0;
       } else {
+      ldout(cct, 10) << "2h3r3" << dendl;
         r = fscrypt_denc->decrypt_bl(offset, target_len, read_start, holes, &bl);
 
         if (r < 0) {
@@ -8513,6 +8515,7 @@ int Client::_do_setattr(Inode *in, struct ceph_statx *stx, int mask,
 
 	// 2. encrypt bl
         if (fscrypt_denc) {
+      ldout(cct, 10) << "6h3r3" << dendl;
           r = fscrypt_denc->encrypt_bl(offset, bl.length(), bl, &ebl);
 	}
 
@@ -8537,6 +8540,7 @@ int Client::_do_setattr(Inode *in, struct ceph_statx *stx, int mask,
       if (stx_size > in->effective_size()) {
         uint64_t size = stx_size;
         if (in->is_fscrypt_enabled()) {
+      ldout(cct, 10) << "bbh3r3 size=" << size << dendl;
 	  in->set_effective_size(size);
           size = fscrypt_next_block_start(size);
 	}
@@ -8651,6 +8655,7 @@ int Client::_do_setattr(Inode *in, struct ceph_statx *stx, int mask,
     req->fscrypt_auth = *aux;
   } else if (mask & CEPH_SETATTR_FSCRYPT_FILE && paux) {
     req->fscrypt_file = *paux;
+    ldout(cct, 10) << "9191h3r3 setting fscrypt_file here=" << *(ceph_le64 *)req->fscrypt_file.data() << dendl;
   }
   req->head.args.setattr.mask = mask;
   req->regetattr_mask = mask;
@@ -11530,7 +11535,9 @@ int Client::_read_async(Fh *f, uint64_t off, uint64_t len, bufferlist *bl,
   }
 
   if (r >= 0) {
+      ldout(cct, 10) << "4ah3r3" << dendl;
     if (fscrypt_denc) {
+      ldout(cct, 10) << "4h3r3" << dendl;
       r = fscrypt_denc->decrypt_bl(off, target_len, read_start, holes, bl);
       if (r < 0) {
         ldout(cct, 20) << __func__ << "(): failed to decrypt buffer: r=" << r << dendl;
@@ -11642,8 +11649,10 @@ int Client::_read_sync(Fh *f, uint64_t off, uint64_t len, bufferlist *bl,
   }
 
   if (r >= 0) {
+      ldout(cct, 10) << "1ah3r3" << dendl;
     if (fscrypt_denc) {
       std::vector<ObjectCacher::ObjHole> holes;
+      ldout(cct, 10) << "1h3r3" << dendl;
       r = fscrypt_denc->decrypt_bl(off, target_len, read_start, holes, pbl);
       if (r < 0) {
         ldout(cct, 20) << __func__ << "(): failed to decrypt buffer: r=" << r << dendl;
@@ -11783,6 +11792,7 @@ int64_t Client::_write_success(Fh *f, utime_t start, uint64_t fpos,
   // extend file?
   if (request_size + request_offset > in->effective_size()) {
     if (encrypted) {
+      ldout(cct, 10) << "cch3r3 size=" << (request_size + request_offset) << dendl;
       in->set_effective_size(request_size + request_offset);
       in->mark_caps_dirty(CEPH_CAP_FILE_EXCL);
     }
@@ -12120,6 +12130,7 @@ bool Client::WriteEncMgr::do_try_finish(int r)
     offset = start_block_ofs;
 
     pbl = &encbl;
+      ldout(cct, 10) << "5h3r3" << dendl;
     r = denc->encrypt_bl(offset, bl.length(), bl, &encbl);
     if (r < 0) {
       ldout(cct, 0) << "failed to encrypt bl: r=" << r << dendl;
@@ -14898,7 +14909,6 @@ int Client::_vxattrcb_fscrypt_auth_set(Inode *in, const void *val, size_t size,
 {
   struct ceph_statx stx = { 0 };
   std::vector<uint8_t>	aux;
-
   aux.resize(size);
   memcpy(aux.data(), val, size);
 
@@ -14916,6 +14926,7 @@ size_t Client::_vxattrcb_fscrypt_file(Inode *in, char *val, size_t size)
 
   if (count <= size)
     memcpy(val, in->fscrypt_file.data(), count);
+  ldout(cct, 10) << "111h3r3 we are getting the!!! fscrypt FILE here! val=" << *(ceph_le64 *)in->fscrypt_file.data() << " in=" << *in << dendl;
   return count;
 }
 
@@ -14927,7 +14938,7 @@ int Client::_vxattrcb_fscrypt_file_set(Inode *in, const void *val, size_t size,
 
   aux.resize(size);
   memcpy(aux.data(), val, size);
-
+  ldout(cct, 10) << "h3r3 we are setting fscrypt FILE here! size=" << *(ceph_le64 *)aux.data() << " in=" << *in << dendl;
   return _do_setattr(in, &stx, CEPH_SETATTR_FSCRYPT_FILE, perms, nullptr, &aux);
 }
 
@@ -16990,6 +17001,7 @@ int Client::_fallocate(Fh *fh, int mode, int64_t offset, int64_t length)
     uint64_t size = offset + length;
     if (size > in->effective_size()) {
       if (in->is_fscrypt_enabled()) {
+      ldout(cct, 10) << "ddh3r3" << dendl;
         in->set_effective_size(size);
         size = fscrypt_next_block_start(size);
       }
