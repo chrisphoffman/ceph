@@ -603,7 +603,7 @@ options:
   level: advanced
   desc: Enable fscrypt access semantics
   long_desc: Enable fscrypt access semantics for locked/unlocked states.
-  default: true
+  default: false
   services:
   - mds_client
   flags:
