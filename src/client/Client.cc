@@ -11091,6 +11091,25 @@ void Client::C_Read_Sync_NonBlocking::finish(int r)
 {
   clnt->client_lock.lock();
 
+  auto effective_size = in->effective_size();
+
+  auto target_len = std::min(len, effective_size - off);
+  uint64_t read_start;
+  uint64_t read_len;
+
+  FSCryptFDataDencRef fscrypt_denc;
+  clnt->fscrypt->prepare_data_read(in->fscrypt_ctx,
+                             &in->fscrypt_key_validator,
+                             off, len, in->size,
+                             &read_start, &read_len,
+                             &fscrypt_denc);
+
+  pos = read_start;
+  left = read_len;
+
+  bufferlist encbl;
+  bufferlist *pbl = (fscrypt_denc ? &encbl : bl);
+
   if (r == -ENOENT) {
     // if we get ENOENT from OSD, assume 0 bytes returned
     goto success;
@@ -11105,19 +11124,19 @@ void Client::C_Read_Sync_NonBlocking::finish(int r)
     read += r;
     pos += r;
     left -= r;
-    bl->claim_append(tbl);
+    pbl->claim_append(tbl);
   }
 
   // short read?
   if (r >= 0 && r < wanted) {
-    if (pos < in->effective_size()) {
+    if (pos < effective_size) {
       // zero up to known EOF
-      int64_t some = in->effective_size() - pos;
+      int64_t some = effective_size - pos;
       if (some > left)
         some = left;
       auto z = buffer::ptr_node::create(some);
       z->zero();
-      bl->push_back(std::move(z));
+      pbl->push_back(std::move(z));
       read += some;
       pos += some;
       left -= some;
@@ -11133,7 +11152,7 @@ void Client::C_Read_Sync_NonBlocking::finish(int r)
     }
 
     // eof?  short read.
-    if ((uint64_t)pos >= in->effective_size())
+    if ((uint64_t)pos >= effective_size)
       goto success;
 
     wanted = left;
@@ -11143,9 +11162,18 @@ void Client::C_Read_Sync_NonBlocking::finish(int r)
   }
 
 success:
+  if (r >= 0) {
+    if (fscrypt_denc) {
+      std::vector<ObjectCacher::ObjHole> holes;
+      r = fscrypt_denc->decrypt_bl(off, target_len, read_start, holes, pbl);
+      if (r < 0) {
+	ldout(clnt->cct, 20) << __func__ << "(): failed to decrypt buffer: r=" << r << dendl;
+      }
+      bl->claim_append(*pbl);
+    }
 
-  r = read;
-
+    r = read;
+  }
 error:
 
   onfinish->complete(r);

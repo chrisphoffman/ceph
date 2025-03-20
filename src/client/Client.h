@@ -1413,6 +1413,7 @@ private:
   // each step, with complete only releasing this object once all is finally
   // complete.
   public:
+    client_t const whoami;
     C_Read_Sync_NonBlocking(Client *clnt, Context *onfinish, Fh *f, Inode *in,
                             uint64_t fpos, uint64_t off, uint64_t len,
                             bufferlist *bl, Filer *filer, int have_caps)
