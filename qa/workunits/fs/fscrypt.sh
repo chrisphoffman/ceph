@@ -28,7 +28,8 @@ fi
 # Initialize global fscrypt config
 sudo $FSCRYPT_CLI setup --force --verbose --all-users
 
-MOUNT_POINT=$(dirname "$(dirname "$(pwd)")")
+MOUNT_POINT=/mnt/mycephfs/
+#MOUNT_POINT=$(dirname "$(dirname "$(pwd)")")
 # Verify that the mount point exists
 if [ ! -d "$MOUNT_POINT" ]; then
     echo "Error: Current working directory '$MOUNT_POINT' is not a valid directory."
