@@ -11322,6 +11322,7 @@ success:
     } else {
       r = read;
     }
+	ldout(clnt->cct, 20) << __func__ << "(): tjh1h1 size=" << bl->length() << " cstr=" << bl->c_str() << dendl;
   }
 error:
 
@@ -11640,6 +11641,7 @@ int Client::_read_async(Fh *f, uint64_t off, uint64_t len, bufferlist *bl,
   get_cap_ref(in, CEPH_CAP_FILE_CACHE);
 
   if (onfinish != nullptr) {
+    ldout(cct, 10) << "h3r3 reset" << dendl;
     io_finish.reset(new C_Read_Async_Finisher(this, onfinish, f, in, bl,
                                               f->pos, off, len,
                                               fscrypt_denc, read_start, read_len));
@@ -11653,9 +11655,11 @@ int Client::_read_async(Fh *f, uint64_t off, uint64_t len, bufferlist *bl,
 
     // If not async, immediate return of 0 bytes
     if (onfinish == nullptr) {
+    ldout(cct, 10) << "1h3r3 reset" << dendl;
       return 0;
     }
 
+    ldout(cct, 10) << "2h3r3 reset" << dendl;
     // Release C_Read_Async_Finisher from managed pointer, we need to complete
     // immediately. The C_Read_Async_Finisher is safely handled and won't be
     // abandoned.
@@ -11678,14 +11682,17 @@ int Client::_read_async(Fh *f, uint64_t off, uint64_t len, bufferlist *bl,
   //
   int r = 0;
   if (onfinish == nullptr) {
+    ldout(cct, 10) << "4h3r3 reset" << dendl;
     io_finish_cond = new C_SaferCond("Client::_read_async flock");
     io_finish.reset(io_finish_cond);
   }
 
   std::vector<ObjectCacher::ObjHole> holes;
+    ldout(cct, 10) << "5ah3r3 reset off=" << off << " len=" << len << " read_start=" << read_start << " read_len=" << read_len << dendl;
   r = objectcacher->file_read_ex(&in->oset, &in->layout, in->snapid,
                                  read_start, read_len, bl, 0, &holes, io_finish.get());
   if (onfinish != nullptr) {
+    ldout(cct, 10) << "5h3r3 reset" << dendl;
     // put the cap ref since we're releasing C_Read_Async_Finisher
     put_cap_ref(in, CEPH_CAP_FILE_CACHE);
     // Release C_Read_Async_Finisher from managed pointer, either
@@ -11694,20 +11701,24 @@ int Client::_read_async(Fh *f, uint64_t off, uint64_t len, bufferlist *bl,
     // handled and won't be abandoned.
     Context *crf = io_finish.release();
     if (r != 0) {
+    ldout(cct, 10) << "6h3r3 reset" << dendl;
       // need to do readahead, so complete the crf
       crf->complete(r);
     }
+    ldout(cct, 10) << "7h3r3 reset" << dendl;
     return 0;
   }
 
   // Wait for the blocking read to complete and then do readahead
   if (r == 0) {
+    ldout(cct, 10) << "8h3r3 reset" << dendl;
     client_lock.unlock();
     r = io_finish_cond->wait();
 
     client_lock.lock();
     put_cap_ref(in, CEPH_CAP_FILE_CACHE);
   } else {
+    ldout(cct, 10) << "9h3r3 reset" << dendl;
     put_cap_ref(in, CEPH_CAP_FILE_CACHE);
   }
 
@@ -11726,6 +11737,7 @@ int Client::_read_async(Fh *f, uint64_t off, uint64_t len, bufferlist *bl,
 
     update_read_io_size(bl->length());
   }
+    ldout(cct, 10) << "10h3r3 reset" << dendl;
 
   do_readahead(f, in, off, len);
 
@@ -11975,8 +11987,9 @@ int64_t Client::_write_success(Fh *f, utime_t start, uint64_t fpos,
       in->set_effective_size(request_size + request_offset);
       in->mark_caps_dirty(CEPH_CAP_FILE_EXCL);
     }
-    ldout(cct, 7) << "in->effective_size()=" << in->effective_size() << dendl;
+    ldout(cct, 7) << "in->effective_size()=" << in->effective_size() << " size=" << in->size << dendl;
     in->size = totalwritten + offset;
+    ldout(cct, 7) << "2in->effective_size()=" << in->effective_size() << " size=" << in->size << dendl;
     in->mark_caps_dirty(CEPH_CAP_FILE_WR);
 
     if (is_quota_bytes_approaching(in, f->actor_perms)) {
@@ -12137,8 +12150,8 @@ int Client::WriteEncMgr::read_async(uint64_t off, uint64_t len, bufferlist *bl,
                                      iofinish_method_ctx<WriteEncMgr> *ioctx)
 {
   get();
-
-  if (off >= in->size) {
+  
+  if (off >= in->effective_size()) {
     ioctx->finish(0);
     return 0;
   }
@@ -12161,29 +12174,34 @@ int Client::WriteEncMgr::read_modify_write(Context *_iofinish)
   if (!denc) {
     return do_write();
   }
-
+  ldout(cct, 10) << "zh3r3 reset offset=" << offset << " size=" << size << " async=" << async << " this obj=" << this << dendl;
   ceph_assert(ceph_mutex_is_locked_by_me(clnt->client_lock));
 
   int r = 0;
 
   start_block = fscrypt_block_from_ofs(offset);
   start_block_ofs = fscrypt_block_start(offset);
-  ofs_in_start_block = fscrypt_ofs_in_block(offset);
+ofs_in_start_block = fscrypt_ofs_in_block(offset);
   end_block = fscrypt_block_from_ofs(endoff - 1);
   end_block_ofs = fscrypt_block_start(endoff - 1);
   ofs_in_end_block = fscrypt_ofs_in_block(endoff - 1);
-
-  need_read_start = ofs_in_start_block >= 0;
+ // if (ofs_in_start_block == 904)
+ //   ofs_in_start_block = 4;
+  need_read_start = ofs_in_start_block >= 0 && ofs_in_start_block < FSCRYPT_BLOCK_SIZE;
   need_read_end = (endoff <= in->effective_size() && ofs_in_end_block < FSCRYPT_BLOCK_SIZE && start_block != end_block);
   read_start_size = FSCRYPT_BLOCK_SIZE;
 
   bool need_read = need_read_start | need_read_end;
+  ldout(cct, 10) << "tjh1h1 start_block_ofs=" << start_block_ofs << " read_start_size=" << read_start_size << " end_block_ofs=" << end_block_ofs << " offset=" << offset << " endoff=" << endoff << " ofs_in_start_block=" << ofs_in_start_block << " ofs_in_end_block=" << ofs_in_end_block << " start_block=" << start_block << " end_block=" << end_block << dendl;
 
-
-  if (read_start_size > 0) {
+  if (need_read_start) {
+  //if (read_start_size > 0) {
     finish_read_start_ctx.reset(new iofinish_method_ctx<WriteEncMgr>(*this, &WriteEncMgr::finish_read_start_cb, &aioc));
-
-    r = read_async(start_block_ofs, read_start_size, &startbl, finish_read_start_ctx.get());
+    ldout(cct, 10) << "tjh1h1 start fscrypt_next=" << fscrypt_next_block_start(offset) << dendl;
+    
+    int the_len = std::min(endoff-offset, fscrypt_next_block_start(offset)-offset);
+    r = read_async(offset, the_len, &startbl, finish_read_start_ctx.get());
+    //r = read_async(start_block_ofs, read_start_size, &startbl, finish_read_start_ctx.get());
     if (r < 0) {
       finish_read_start_ctx.reset();
 
@@ -12193,9 +12211,11 @@ int Client::WriteEncMgr::read_modify_write(Context *_iofinish)
   }
 
   if (need_read_end) {
+    ldout(cct, 10) << "222tjh1h1 end" << dendl;
     finish_read_end_ctx.reset(new iofinish_method_ctx<WriteEncMgr>(*this, &WriteEncMgr::finish_read_end_cb, &aioc));
 
-    r = read_async(end_block_ofs, FSCRYPT_BLOCK_SIZE, &endbl, finish_read_end_ctx.get());
+    r = read_async(end_block_ofs, endoff-end_block_ofs, &endbl, finish_read_end_ctx.get());
+    //r = read_async(end_block_ofs, FSCRYPT_BLOCK_SIZE, &endbl, finish_read_end_ctx.get());
     if (r < 0) {
       finish_read_end_ctx.reset();
 
@@ -12229,10 +12249,13 @@ int Client::WriteEncMgr::read_modify_write(Context *_iofinish)
 done:
   if (async) {
     if (finish_read_start_ctx) {
+
+    ldout(cct, 10) << "333tjh1h1 end" << dendl;
       finish_read_start_ctx->release();
     }
 
     if (finish_read_end_ctx) {
+    ldout(cct, 10) << "444tjh1h1 end" << dendl;
       finish_read_end_ctx->release();
     }
   }
@@ -12253,7 +12276,6 @@ void Client::WriteEncMgr::finish_read_start(int r)
     if (read_len < read_start_size) {
       startbl.append_zero(read_start_size - read_len);
     }
-
     /* prepend data from the start of the first block */
     bufferlist newbl;
     startbl.splice(0, ofs_in_start_block, &newbl);
@@ -12273,17 +12295,15 @@ void Client::WriteEncMgr::finish_read_start(int r)
         newbl.append_zero(FSCRYPT_BLOCK_SIZE - newbl.length());
       }
     }
-
+    ldout(cct, 10) << "start finish blsize=" << bl.length() << " newblsize=" << newbl.length() << dendl;
     bl.swap(newbl);
   }
-
   try_finish(r);
 }
 
 void Client::WriteEncMgr::finish_read_end(int r)
 {
   ceph_assert(ceph_mutex_is_locked_by_me(clnt->client_lock));
-
   if (r >= 0) {
     std::lock_guard l{lock};
     if (endbl.length() > ofs_in_end_block) {
@@ -12318,6 +12338,7 @@ bool Client::WriteEncMgr::do_try_finish(int r)
     size = encbl.length();
   }
 
+      ldout(cct, 10) << "5bbbbbbbbh3r3 size=" << pbl->length() << dendl;
   clnt->put_cap_ref(in, CEPH_CAP_FILE_RD);
   in->mark_caps_dirty(CEPH_CAP_FILE_RD);
 
@@ -12339,6 +12360,7 @@ int Client::WriteEncMgr_Buffered::do_write()
 {
   int r =  0;
 
+usleep(8000000);
   // do buffered write
   if (!in->oset.dirty_or_tx)
     clnt->get_cap_ref(in, CEPH_CAP_FILE_CACHE | CEPH_CAP_FILE_BUFFER);
@@ -12361,7 +12383,9 @@ int Client::WriteEncMgr_NotBuffered::do_write()
 {
   clnt->get_cap_ref(in, CEPH_CAP_FILE_BUFFER);
 
-  clnt->filer->write_trunc(in->ino, &in->layout, in->snaprealm->get_snap_context(),
+usleep(8000000);
+ldout(cct, 10) << "5aaaaaaaaah3r3 offset=" << offset << " size=" << size << dendl;
+clnt->filer->write_trunc(in->ino, &in->layout, in->snaprealm->get_snap_context(),
                            offset, size, *pbl, ceph::real_clock::now(), 0,
                            in->truncate_size, in->truncate_seq,
                            iofinish);
@@ -12481,11 +12505,14 @@ int64_t Client::_write(Fh *f, int64_t offset, uint64_t size, const char *buf,
   bool buffered_write = (cct->_conf->client_oc && (have & (CEPH_CAP_FILE_BUFFER | CEPH_CAP_FILE_LAZYIO)));
   ceph::ref_t<WriteEncMgr> enc_mgr;
 
+    ldout(cct, 10) << "0h1h1 offset=" << offset << " size=" << size << dendl;
   if (buffered_write) {
+    ldout(cct, 10) << "1h1h1" << dendl;
     enc_mgr = ceph::make_ref<WriteEncMgr_Buffered>(this, f,
                                            offset, size, bl,
                                            !!onfinish);
   } else {
+    ldout(cct, 10) << "2h1h1" << dendl;
     enc_mgr = ceph::make_ref<WriteEncMgr_NotBuffered>(this, f,
                                            offset, size, bl,
                                            !!onfinish);
@@ -12528,7 +12555,7 @@ int64_t Client::_write(Fh *f, int64_t offset, uint64_t size, const char *buf,
       in->inline_version++;
 
       put_cap_ref(in, CEPH_CAP_FILE_BUFFER);
-
+      ldout(cct, 10) << "success h3r3" << dendl;
       goto success;
     }
   }
@@ -12563,18 +12590,22 @@ int64_t Client::_write(Fh *f, int64_t offset, uint64_t size, const char *buf,
     }
 
     if (onfinish) {
+      ldout(cct, 10) << "1async check h3r3" << dendl;
       // handle non-blocking caller (onfinish != nullptr), we can now safely
       // release all the managed pointers, but we might need to do something
       // with iofinisher.
       Context *iof = iofinish.release();
       C_Write_Finisher *cwfp = cwf.release();
 
+      ldout(cct, 10) << "2async check h3r3" << dendl;
       if (r < 0) {
+      ldout(cct, 10) << "3async check h3r3" << dendl;
         // should not get here, but...
         iof->complete(r);
       }
 
       if (nullptr != onuninline) {
+      ldout(cct, 10) << "4async check h3r3" << dendl;
         client_lock.unlock();
         int uninline_ret = onuninline->wait();
         client_lock.lock();
@@ -12586,9 +12617,11 @@ int64_t Client::_write(Fh *f, int64_t offset, uint64_t size, const char *buf,
           check_caps(in, 0);
         }
 
+      ldout(cct, 10) << "5async check h3r3" << dendl;
         cwfp->finish_onuninline(uninline_ret);
       }
 
+      ldout(cct, 10) << "6async check h3r3" << dendl;
       // allow caller to wait on onfinish...
       return 0;
     }
@@ -12622,7 +12655,13 @@ int64_t Client::_write(Fh *f, int64_t offset, uint64_t size, const char *buf,
       filer_iofinish.reset(new C_OnFinisher(new C_Lock_Client_Finisher(this, iofinish.get()), &objecter_finisher));
     }
 
-    enc_mgr->read_modify_write(filer_iofinish.get());
+    int r = enc_mgr->read_modify_write(filer_iofinish.get());
+    ldout(cct,10)<<"after rmw, h3r3 r=" << r << dendl;
+    if (r < 0) {
+      ldout(cct, 0) << __func__ << "(): enc_mgr read failed (r=" << r << ")" << dendl;
+      put_cap_ref(in, CEPH_CAP_FILE_RD);
+      return r;
+    }
 
     if (onfinish) {
       // handle non-blocking caller (onfinish != nullptr), we can now safely
@@ -12647,6 +12686,7 @@ int64_t Client::_write(Fh *f, int64_t offset, uint64_t size, const char *buf,
   // if we get here, write was successful, update client metadata
 success:
 
+    ldout(cct, 10) << "3h1h1" << dendl;
   // do not get here if non-blocking caller (onfinish != nullptr)
   r = _write_success(f, start, fpos, request_offset, request_size, enc_mgr->get_ofs(), enc_mgr->get_size(), in, enc_mgr->encrypted());
 
@@ -12660,6 +12700,7 @@ success:
   }
 
 done:
+    ldout(cct, 10) << "4h1h1" << dendl;
 
   // can not get here if non-blocking caller (onfinish != nullptr)
 
