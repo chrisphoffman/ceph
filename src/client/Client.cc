@@ -11317,10 +11317,10 @@ success:
     // r is expected to hold value of effective bytes read.
     // in the case of fscrypt, this will be the logical size. So if all bytes read
     // is equal to read_len, then display logical size.
-    if (read_len == read) {
+    if (read_len == (int)read) {
       r = len;
     } else {
-      r = read;
+      r = (int)read;
     }
 	ldout(clnt->cct, 20) << __func__ << "(): tjh1h1 size=" << bl->length() << " cstr=" << bl->c_str() << dendl;
   }
