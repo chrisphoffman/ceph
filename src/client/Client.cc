@@ -7845,6 +7845,9 @@ int Client::path_walk(InodeRef dirinode, const filepath& origpath, walk_dentry_r
       rc = r;
       goto out;
     }
+
+    next->fscrypt_encname = alternate_name; 
+
     // only follow trailing symlink if followsym.  always follow
     // 'directory' symlinks.
     if (next && next->is_symlink()) {
@@ -8455,7 +8458,8 @@ int Client::_do_setattr(Inode *in, struct ceph_statx *stx, int mask,
     //and truncate size is non-zero.
     if (in->is_fscrypt_enabled() && stx_size < in->effective_size() &&
         stx_size % FSCRYPT_BLOCK_SIZE != 0 &&
-        (mask & CEPH_SETATTR_FSCRYPT_FILE) && stx_size != 0){
+        (mask & CEPH_SETATTR_FSCRYPT_FILE) && stx_size != 0 &&
+	cct->_conf.get_val<bool>("client_fscrypt_as")){
       // steps:
       // 1. read last block
 
@@ -13185,6 +13189,8 @@ int Client::_getcwd(string& dir, const UserPerm& perms)
     auto dname = _unwrap_name(*diri, dn->name, dn->alternate_name);
     path.push_front_dentry(dname);
     in = InodeRef(diri);
+    if (!dn->alternate_name.empty())
+      in->fscrypt_encname = dn->alternate_name;
   }
   dir = "/";
   dir += path.get_path();
@@ -15101,6 +15107,38 @@ size_t Client::_vxattrcb_fscrypt_file(Inode *in, char *val, size_t size)
 int Client::_vxattrcb_fscrypt_file_set(Inode *in, const void *val, size_t size,
 				       const UserPerm& perms)
 {
+  struct ceph_statx stx;
+  std::vector<uint8_t>	aux;
+
+  aux.resize(sizeof(uint64_t));
+  uint64_t the_size;
+
+  memcpy(&the_size, val, size);
+  *(ceph_le64 *)aux.data() = the_size;
+  stx.stx_size = the_size;
+
+  // TODO: rework _do_setattr to pass mask CEPH_SETATTR_FSCRYPT_FILE
+  return _do_setattr(in, &stx, CEPH_SETATTR_SIZE, perms, nullptr, &aux);
+}
+
+bool Client::_vxattrcb_fscrypt_encname_exists(Inode *in)
+{
+  return true;
+ // !in->fscrypt_encname.empty();
+}
+
+size_t Client::_vxattrcb_fscrypt_encname(Inode *in, char *val, size_t size)
+{
+  size_t count = in->fscrypt_encname.size();
+
+  if (count)
+    memcpy(val, &in->fscrypt_encname, count);
+  return count;
+}
+
+int Client::_vxattrcb_fscrypt_encname_set(Inode *in, const void *val, size_t size,
+				       const UserPerm& perms)
+{
   struct ceph_statx stx = { 0 };
   std::vector<uint8_t>	aux;
 
@@ -15111,9 +15149,9 @@ int Client::_vxattrcb_fscrypt_file_set(Inode *in, const void *val, size_t size,
   *(ceph_le64 *)aux.data() = the_size;
 
   // TODO: rework _do_setattr to pass mask CEPH_SETATTR_FSCRYPT_FILE
-  return _do_setattr(in, &stx, CEPH_SETATTR_SIZE, perms, nullptr, &aux);
+  return 0;
+  //  return _do_setattr(in, &stx, CEPH_SETATTR_FSCRYPT_ENCNAME, perms, nullptr, &aux);
 }
-
 bool Client::_vxattrcb_quota_exists(Inode *in)
 {
   return in->quota.is_enabled() &&
@@ -15433,6 +15471,14 @@ const Client::VXattr Client::_common_vxattrs[] = {
     setxattr_cb: &Client::_vxattrcb_fscrypt_file_set,
     readonly: false,
     exists_cb: &Client::_vxattrcb_fscrypt_file_exists,
+    flags: 0,
+  },
+  {
+    name: "ceph.fscrypt.encname",
+    getxattr_cb: &Client::_vxattrcb_fscrypt_encname,
+    setxattr_cb: &Client::_vxattrcb_fscrypt_encname_set,
+    readonly: false,
+    exists_cb: &Client::_vxattrcb_fscrypt_encname_exists,
     flags: 0,
   },
   { name: "" }     /* Required table terminator */

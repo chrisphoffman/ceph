@@ -2112,6 +2112,9 @@ private:
   bool _vxattrcb_fscrypt_file_exists(Inode *in);
   size_t _vxattrcb_fscrypt_file(Inode *in, char *val, size_t size);
   int _vxattrcb_fscrypt_file_set(Inode *in, const void *val, size_t size, const UserPerm& perms);
+  bool _vxattrcb_fscrypt_encname_exists(Inode *in);
+  size_t _vxattrcb_fscrypt_encname(Inode *in, char *val, size_t size);
+  int _vxattrcb_fscrypt_encname_set(Inode *in, const void *val, size_t size, const UserPerm& perms);
   bool _vxattrcb_quota_exists(Inode *in);
   size_t _vxattrcb_quota(Inode *in, char *val, size_t size);
   size_t _vxattrcb_quota_max_bytes(Inode *in, char *val, size_t size);

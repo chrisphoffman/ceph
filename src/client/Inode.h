@@ -101,6 +101,7 @@ struct CapSnap {
   version_t xattr_version = 0;
   std::vector<uint8_t> fscrypt_auth;
   std::vector<uint8_t> fscrypt_file;
+  std::string fscrypt_encname;
 
   bufferlist inline_data;
   version_t inline_version = 0;
@@ -176,6 +177,7 @@ struct Inode : RefCountedObject {
 
   std::vector<uint8_t> fscrypt_auth;
   std::vector<uint8_t> fscrypt_file;
+  std::string fscrypt_encname;
 
   decltype(InodeStat::optmetadata) optmetadata;
   using optkind_t = decltype(InodeStat::optmetadata)::optkind_t;
