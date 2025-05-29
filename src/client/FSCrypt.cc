@@ -29,6 +29,8 @@
 
 #include <string.h>
 #include <shared_mutex>
+#include <stdlib.h>
+#include <sys/mman.h>
 
 #define dout_subsys ceph_subsys_client
 
@@ -294,20 +296,65 @@ std::ostream& operator<<(std::ostream& out, const ceph_fscrypt_key_identifier& k
   return out;
 }
 
+#include <cstring>  // For memset_s
+
 int FSCryptKey::init(const char *k, int klen) {
-  int r = fscrypt_calc_hkdf(HKDF_CONTEXT_KEY_IDENTIFIER,
-                            nullptr, 0, /* nonce */
-                            nullptr, 0, /* salt */
-                            (const char *)k, klen,
-                            identifier.raw, sizeof(identifier.raw));
-  if (r < 0) {
-    return r;
-  }
+    if (klen == 0) {
+        return -EINVAL;  // Handle zero-length key case
+    }
 
-  key.append_hole(klen);
-  memcpy(key.c_str(), k, klen);
+    int r = fscrypt_calc_hkdf(HKDF_CONTEXT_KEY_IDENTIFIER,
+                              nullptr, 0, /* nonce */
+                              nullptr, 0, /* salt */
+                              k, klen,
+                              identifier.raw, sizeof(identifier.raw));
+    if (r < 0) {
+        return r;
+    }
 
-  return 0;
+    // Get system page size
+    size_t page_size = sysconf(_SC_PAGESIZE);
+    map_size = (klen + page_size - 1) & ~(page_size - 1);  // Round up
+
+    // Allocate a dedicated memory region for the key
+    key_ptr = mmap(nullptr, map_size, PROT_READ | PROT_WRITE,
+                   MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+    if (key_ptr == MAP_FAILED) {
+        ldout(cct, 0) << "ERROR: mmap() failed: " << strerror(r) << dendl;
+        key_ptr = nullptr;
+        map_size = 0;
+        return -ENOMEM;
+    }
+
+    // Prevent this region from being swapped
+    r = mlock(key_ptr, map_size);
+    if (r) {
+        ldout(cct, 0) << "ERROR: mlock() failed: " << strerror(r) << dendl;
+        munmap(key_ptr, map_size);
+        key_ptr = nullptr;
+        map_size = 0;
+        return r;
+    }
+
+    // Exclude this region from core dumps
+    r = madvise(key_ptr, map_size, MADV_DONTDUMP);
+    if (r) {
+        ldout(cct, 0) << "ERROR: MADV_DONTDUMP failed: " << strerror(r) << dendl;
+        munlock(key_ptr, map_size);  // Unlock before unmapping
+        munmap(key_ptr, map_size);
+        key_ptr = nullptr;
+        map_size = 0;
+        return r;
+    }
+
+    // Copy the key securely
+    memcpy(key_ptr, k, klen);
+
+    auto raw_ptr = buffer::claim_char(klen, (char*)key_ptr);
+    buffer::ptr buffer_ptr(std::move(raw_ptr));
+    key.push_back(buffer_ptr);
+
+    return 0;
 }
 
 int FSCryptKey::calc_hkdf(char ctx_identifier,
@@ -445,7 +492,7 @@ int FSCryptKeyStore::maybe_remove_user(struct fscrypt_remove_key_arg* arg, std::
 
 int FSCryptKeyStore::create(const char *k, int klen, FSCryptKeyHandlerRef& key_handler, int user)
 {
-  auto key = std::make_shared<FSCryptKey>();
+  auto key = std::make_shared<FSCryptKey>(cct);
 
   int r = key->init(k, klen);
   if (r < 0) {
