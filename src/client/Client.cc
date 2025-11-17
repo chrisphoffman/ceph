@@ -990,7 +990,12 @@ void Client::update_inode_file_size(Inode *in, int issued, uint64_t size,
           // in the case of fscrypt truncate, you'll want to invalidate
           // the whole fscrypt block (from start of block to end)
           // otherwise on a read you'll have an invalid fscrypt block
-	  _invalidate_inode_cache(in, fscrypt_block_start(size), FSCRYPT_BLOCK_SIZE);
+	  uint64_t thelen = FSCRYPT_BLOCK_SIZE;
+
+	  if (fscrypt_next_block_start(prior_size) - fscrypt_block_start(size) != 0)
+		thelen = fscrypt_next_block_start(prior_size) - fscrypt_block_start(size);
+
+	  _invalidate_inode_cache(in, fscrypt_block_start(size), thelen);
 	} else
 #endif
           _invalidate_inode_cache(in, size, prior_size - size);
@@ -8621,14 +8626,13 @@ int Client::_do_setattr(Inode *in, struct ceph_statx *stx, int mask,
       bufferlist ebl;
       ceph_fscrypt_last_block_header header;
 
-      int r;
       std::unique_ptr<Context> io_finish = nullptr;
 
       uint64_t read_start;
       uint64_t read_len;
 
       C_SaferCond *io_finish_cond = nullptr;
-      io_finish_cond = new C_SaferCond("Client::_read_async flock");
+      io_finish_cond = new C_SaferCond("Client::_do_setattr flock");
       io_finish.reset(io_finish_cond);
 
       FSCryptFDataDencRef fscrypt_denc;
@@ -8642,9 +8646,8 @@ int Client::_do_setattr(Inode *in, struct ceph_statx *stx, int mask,
       get_cap_ref(in, CEPH_CAP_FILE_CACHE);
       std::vector<ObjectCacher::ObjHole> holes;
       auto target_len = std::min(read_len, stx->stx_size - offset);
-      r = objectcacher->file_read_ex(&in->oset, &in->layout, in->snapid,
+      int r = objectcacher->file_read_ex(&in->oset, &in->layout, in->snapid,
                                      read_start, target_len, &bl, 0, &holes, io_finish.get());
-
       if (r == 0) {
         client_lock.unlock();
         r = io_finish_cond->wait();
@@ -8669,9 +8672,13 @@ int Client::_do_setattr(Inode *in, struct ceph_statx *stx, int mask,
           return r;
         }
 
+        bufferlist newbl;
+        bl.splice(0, target_len, &newbl);
+        newbl.append_zero(FSCRYPT_BLOCK_SIZE-target_len);
+
 	// 2. encrypt bl
         if (fscrypt_denc) {
-          r = fscrypt_denc->encrypt_bl(offset, bl.length(), bl, &ebl);
+          r = fscrypt_denc->encrypt_bl(offset, newbl.length(), newbl, &ebl);
 	}
 
         header.data_len = (8 + 8 + 4 + ebl.length());
