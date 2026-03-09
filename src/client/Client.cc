@@ -4309,6 +4309,7 @@ void Client::check_caps(const InodeRef& in, unsigned flags)
     /* completed revocation? */
     if (revoking && (revoking & cap_used) == 0) {
       ldout(cct, 10) << "completed revocation of " << ccap_string(cap.implemented & ~cap.issued) << dendl;
+      ldout(cct, 10) << "after completed revocation of ^^ caps now" << ccap_string(in->caps_issued()) << dendl;
       goto ack;
     }
 
@@ -8565,6 +8566,7 @@ int Client::_do_setattr(Inode *in, struct ceph_statx *stx, int mask,
 #endif
       in->mark_caps_dirty(CEPH_CAP_AUTH_EXCL);
       mask &= ~CEPH_SETATTR_FSCRYPT_AUTH;
+      inode_drop |= CEPH_CAP_AUTH_SHARED;
     } else if (!in->caps_issued_mask(CEPH_CAP_AUTH_SHARED) ||
                in->fscrypt_auth != *aux) {
       inode_drop |= CEPH_CAP_AUTH_SHARED;

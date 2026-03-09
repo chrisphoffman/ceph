@@ -37,22 +37,30 @@ fi
 
 # Create the test directory
 test_dir="$MOUNT_POINT/$test_dir"
-mkdir "$test_dir"
-
+sudo mkdir "$test_dir"
+sudo chmod 777 "$test_dir"
 # Check the fscrypt status for the mount point
+echo checking .fscrypt folder contents 
+find "${MOUNT_POINT}/.fscrypt" || true
 STATUS_OUTPUT=$(sudo $FSCRYPT_CLI status "$MOUNT_POINT" --verbose || true)
+echo checking .fscrypt folder contents 
+find "${MOUNT_POINT}/.fscrypt" || true
 if echo "$STATUS_OUTPUT" | grep -q "users can create fscrypt metadata on this filesystem"; then
     echo "The mount point '$MOUNT_POINT' is already initialized with fscrypt."
 else
     echo "The mount point '$MOUNT_POINT' is not properly initialized. Initializing now..."
 
     # Initialize fscrypt on the mount point
+    echo checking .fscrypt folder contents 
+    find "${MOUNT_POINT}/.fscrypt" || true
     if sudo $FSCRYPT_CLI setup "$MOUNT_POINT" --verbose --force --all-users; then
         echo "Successfully initialized fscrypt on '$MOUNT_POINT'."
     else
         echo "Error: Failed to initialize fscrypt on '$MOUNT_POINT'."
         exit 1
     fi
+    echo checking .fscrypt folder contents 
+    find "${MOUNT_POINT}/.fscrypt" || true
 fi
 
 case ${fscrypt_type} in
@@ -71,8 +79,12 @@ case ${fscrypt_type} in
         ;;
     "locked")
         # Encrypt and lock the directory
+        echo checking .fscrypt folder contents 
+        find "${MOUNT_POINT}/.fscrypt" || true
         printf "password\npassword\n" | sudo $FSCRYPT_CLI encrypt --skip-unlock "$test_dir" --verbose --source=custom_passphrase  --name="test_secret"
         pushd "$test_dir"
+        echo checking .fscrypt folder contents 
+        find "${MOUNT_POINT}/.fscrypt" || true
         "${mydir}/../suites/${test_case}.sh"
         popd
         ;;
