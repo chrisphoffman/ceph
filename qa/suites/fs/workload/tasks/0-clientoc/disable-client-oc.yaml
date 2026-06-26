@@ -1,0 +1,9 @@
+overrides:
+  ceph:
+    cephfs:
+      ec_profile:
+        - disabled
+    conf:
+      client:
+        client_oc: false
+  ceph-fuse:
