@@ -592,40 +592,20 @@ class TestFSCryptVolumes(CephFSTestCase):
         self.fs.set_ceph_conf('client', 'client alternate name visible', True)
         self.mount_a.remount()
 
-        xattrs = ['ceph.fscrypt.auth', 'ceph.fscrypt.auth', 'ceph.alternate_name']
-        for dirpath, dirnames, filenames in os.walk(src_path, followlinks=True):
-            rel_path = os.path.relpath(dirpath, src_path)
-            cur_dst_path = os.path.join(dst_path, rel_path)
-            self.mount_a.run_shell_payload(f'mkdir -p {cur_dst_path}')
+        self.mount_a.copy_tree(src_path, dst_path)
 
-            for xattr in xattrs:
-                try:
-                    value = os.getxattr(dirpath, xattr)
-                    if value is None:
-                        continue
-                    os.setxattr(cur_dst_path, xattr, value)
-                except OSError:
-                    pass
-
-            for file in filenames:
-                src_file = os.path.join(dirpath, file)
-                dst_file = os.path.join(cur_dst_path, file)
-
-                shutil.copy2(src_file, dst_file)
-                for xattr in xattrs:
-                    try:
-                        value = os.getxattr(src_file, xattr)
-                        if value is None:
-                            continue
-                        os.setxattr(dst_file, xattr, value)
-                    except OSError:
-                        pass
-
+        self.mount_a.run_shell_payload(f'echo 3h5h5')
+        self.mount_a.run_shell_payload(f'ls {dst_path}')
         self.fs.set_ceph_conf('client', 'client fscrypt as', True)
         self.fs.set_ceph_conf('client', 'client alternate name visible', False)
         self.mount_a.remount()
-
+        print(f"1h3r3 {src_path}")
+        print(f"2h3r3 {dst_path}")
         self.mount_a.run_shell_payload(f"sudo fscrypt unlock --verbose --key=/tmp/key_volume {src_path}")
+        print(f"3h3r3 {src_path}")
+        print(f"4h3r3 {dst_path}")
+        self.mount_a.run_shell_payload(f'ls -p {src_path}')
+        self.mount_a.run_shell_payload(f'ls {dst_path}')
         for i in range(num_of_files):
             self.mount_a.compare_trees(f"{src_path}/{i}", f"{dst_path}/{i}")
 
